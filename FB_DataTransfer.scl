@@ -1,0 +1,107 @@
+﻿FUNCTION_BLOCK "FB_DataTransfer"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 0.1
+   VAR_INPUT 
+      i_mConvType { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;   // Start search loop for type conversiom
+      i_mReset { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;   // Initialize FB and reset all outputs
+      i_iMaxTypePerCycle { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Int;   // Maximum number of processed pattern per PLC cycle (to reduce cycle time)
+   END_VAR
+
+   VAR_OUTPUT 
+      o_mPulseDone { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;   // Pulse: Search loop is finished (output data can be evaluated)
+   END_VAR
+   VAR_OUTPUT RETAIN
+      o_mRunning { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;   // Search loop is running
+      o_mDone { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;   // Search loop is finished (output data can be evaluated)
+      o_mPassed { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;   // Sensor pattern has sufficient precision
+   END_VAR
+
+   VAR RETAIN
+      mFindPosPulseHF { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;
+      mRunning { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Bool;
+      iTypeStart { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Int;
+   END_VAR
+   VAR 
+      String2CharCount { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : UInt;   // count:string elements to char
+   END_VAR
+   VAR RETAIN
+      iTypeEnd { ExternalAccessible := 'False'; ExternalVisible := 'False'; ExternalWritable := 'False'} : Int;
+   END_VAR
+
+   VAR_TEMP 
+      tmp_mFindPosPulse : Bool;
+      tmp_iTypeNo : Int;
+      i : Int;
+   END_VAR
+
+
+BEGIN
+	(*
+	MODULE-STATE:
+	open         [ ] - code-change during commissioning and engineering is likely
+	encapsulated [x] - communication via interfaces, no code-change affordable
+	
+	DESCRIPTION:
+	
+	The search loops in this block can get pretty intense. Therefore, this block is programmed as an asynchronous
+	search loop, which means the searching will take multiple PLC cycles. The parameter "i_iMaxTypePerCycle"
+	defines, how many types pattern shall be compared in one PLC cycle. So if there are for instance 100
+	type pattern and "i_iMaxTypePerCycle" is set to 5, it will need 20 PLC cycles to complete the search loop.
+	
+	VERSIONS:
+	V0.1    |   zapores | First programmed version
+	*)
+	
+	//positive edge of start signal
+	#tmp_mFindPosPulse := #i_mConvType AND NOT (#mFindPosPulseHF);
+	#mFindPosPulseHF := #i_mConvType;
+	
+	#o_mPulseDone := FALSE;
+	//manual reset or restart
+	IF #i_mReset OR #tmp_mFindPosPulse THEN
+	    #o_mRunning := FALSE;
+	    #o_mDone := FALSE;
+	    #o_mPassed := FALSE;
+	END_IF;
+	
+	IF #tmp_mFindPosPulse THEN
+	    //start search loop
+	    #iTypeStart := 1;
+	    #mRunning := TRUE;
+	END_IF;
+	
+	//search loop (will take multiple PLC cycles!)
+	IF #mRunning THEN
+	    #iTypeEnd := #iTypeStart + #i_iMaxTypePerCycle;
+	    IF #iTypeEnd > "cSizeTypeTable" THEN
+	        #iTypeEnd := "cSizeTypeTable";
+	    END_IF;
+	    //loop only through a few types in this PLC cycle to reduce effect on cycle time
+	    FOR #tmp_iTypeNo := #iTypeStart TO #iTypeEnd DO
+	        Strg_TO_Chars(Strg := "DB_TypeAssignment_bc".yData[#tmp_iTypeNo].zExtAscii,
+	                      pChars := 0,
+	                      Cnt => #String2CharCount,
+	                      Chars := "ArticleSelection".Type[#tmp_iTypeNo].TypeChar);
+	        Strg_TO_Chars(Strg := "DB_ColorAssignment_bc".yData[#tmp_iTypeNo].zExtAscii,
+	                      pChars := 0,
+	                      Cnt => #String2CharCount,
+	                      Chars := "ArticleSelection".Color[#tmp_iTypeNo].ColorChar);
+	    END_FOR;
+	END_IF;
+	
+	
+	//Not end of search loop. Initialize the start-pointer to continue loop with the next PLC cycle
+	IF #iTypeEnd < "cSizeTypeTable" THEN
+	    #iTypeStart := #iTypeEnd + 1;
+	    
+	    //End of type search loop. All type pattern have been compared with the current pattern
+	ELSE
+	    
+	    #mRunning := FALSE;
+	    #o_mDone := TRUE;
+	    #o_mPulseDone := TRUE;
+	    
+	END_IF;
+	    
+END_FUNCTION_BLOCK
+
