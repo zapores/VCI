@@ -76,7 +76,7 @@ BEGIN
 	    IF #iTypeEnd > "cSizeTypeTable" THEN
 	        #iTypeEnd := "cSizeTypeTable";
 	    END_IF;
-	    //loop only through a few types in this PLC cycle to reduce effect on cycle time
+	    //loop only through a few types in this PLC cycle to reduce effect on cycle time.
 	    FOR #tmp_iTypeNo := #iTypeStart TO #iTypeEnd DO
 	        Strg_TO_Chars(Strg := "DB_TypeAssignment_bc".yData[#tmp_iTypeNo].zExtAscii,
 	                      pChars := 0,
